@@ -1042,7 +1042,7 @@ static int openvfd_driver_remove(struct platform_device *pdev)
 	kfree(pdata);
 	pdata = NULL;
 #endif
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6,10,0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,11,0)
 	return 0;
 #endif
 }
