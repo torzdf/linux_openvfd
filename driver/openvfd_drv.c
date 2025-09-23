@@ -609,6 +609,15 @@ static void print_param_debug(const char *label, int argc, unsigned int param[])
 	pr_dbg2("%s\n", buffer);
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
+static int is_right_chip(struct gpio_chip *chip, const void *data)
+{
+	pr_dbg("is_right_chip %s | %s | %d\n", chip->label, (const char*)data, strcmp(data, chip->label));
+	if (strcmp((const char *)data, chip->label) == 0)
+		return 1;
+	return 0;
+}
+#else
 static int is_right_chip(struct gpio_chip *chip, void *data)
 {
 	pr_dbg("is_right_chip %s | %s | %d\n", chip->label, (char*)data, strcmp(data, chip->label));
@@ -616,22 +625,39 @@ static int is_right_chip(struct gpio_chip *chip, void *data)
 		return 1;
 	return 0;
 }
+#endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,7,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
 static struct gpio_chip *gpiochip_find(void *data,
 				int (*match)(struct gpio_chip *gc,
-							 void *data))
+							 const void *data))
 {
 	struct gpio_device *gdev;
 	struct gpio_chip *gc = NULL;
 
 	gdev = gpio_device_find(data, match);
 	if (gdev) {
-		gc = gdev->chip;
+		gc = gpio_device_get_chip(gdev);
 		gpio_device_put(gdev);
 	}
 
 	return gc;
+}
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6,7,0)
+static struct gpio_chip *gpiochip_find(void *data,
+                int (*match)(struct gpio_chip *gc,
+					         void *data))
+{
+    struct gpio_device *gdev;
+    struct gpio_chip *gc = NULL;
+
+    gdev = gpio_device_find(data, match);
+    if (gdev) {
+        gc = gpio_device_get_chip(gdev);
+        gpio_device_put(gdev);
+    }
+
+    return gc;
 }
 #endif
 
@@ -681,6 +707,20 @@ int evaluate_pin(const char *name, const unsigned int *vfd_arg, struct vfd_pin *
 
 char gpio_chip_names[1024] = { 0 };
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
+static int enum_gpio_chips(struct gpio_chip *chip, const void *data)
+{
+	static unsigned char first_iteration = 1;
+	const char *sep = ", ";
+	size_t str_len = strlen(gpio_chip_names);
+	if (first_iteration)
+		sep = "";
+	(void)data;
+	scnprintf(gpio_chip_names + str_len, sizeof(gpio_chip_names) - str_len, "%s%s", sep, chip->label);
+	first_iteration = 0;
+	return 0;
+}
+#else
 static int enum_gpio_chips(struct gpio_chip *chip, void *data)
 {
 	static unsigned char first_iteration = 1;
@@ -692,6 +732,7 @@ static int enum_gpio_chips(struct gpio_chip *chip, void *data)
 	first_iteration = 0;
 	return 0;
 }
+#endif
 
 static int verify_module_params(struct vfd_dev *dev)
 {
@@ -970,7 +1011,11 @@ static int openvfd_driver_probe(struct platform_device *pdev)
 	return state;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,11,0)
+static void openvfd_driver_remove(struct platform_device *pdev)
+#else
 static int openvfd_driver_remove(struct platform_device *pdev)
+#endif
 {
 	set_power(0);
 #if defined(CONFIG_HAS_EARLYSUSPEND) || defined(CONFIG_AMLOGIC_LEGACY_EARLY_SUSPEND)
@@ -997,7 +1042,9 @@ static int openvfd_driver_remove(struct platform_device *pdev)
 	kfree(pdata);
 	pdata = NULL;
 #endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,10,0)
 	return 0;
+#endif
 }
 
 static void openvfd_driver_shutdown(struct platform_device *dev)
